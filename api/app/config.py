@@ -35,6 +35,13 @@ class Settings(BaseSettings):
         default="", description="NASA FIRMS MAP_KEY for satellite thermal data"
     )
 
+    # --- ACLED (Conflict Data) ---
+    ACLED_API_KEY: str = Field(default="", description="ACLED API key")
+    ACLED_EMAIL: str = Field(default="", description="Email registered with ACLED")
+
+    # --- EIA (US Gov Petroleum Data) ---
+    EIA_API_KEY: str = Field(default="", description="EIA API key")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

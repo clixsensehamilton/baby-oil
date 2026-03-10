@@ -46,6 +46,19 @@ NASA FIRMS satellite thermal anomaly events:
 - A thermal anomaly near oil infrastructure (refinery, pipeline, storage) = potential fire or incident = supply disruption risk = BULLISH signal.
 - Score relevance based on Fire Radiative Power (FRP): 10-50 MW = moderate (4-6), 50-200 MW = significant (6-8), 200+ MW = major (8-10).
 - Default to bullish unless the context clearly indicates routine gas flaring (steady low-intensity, no incident indicators).
+
+ACLED conflict data events:
+- These are verified conflict events (battles, explosions, drone strikes, armed clashes) in oil-producing countries.
+- Events tagged [OIL INFRASTRUCTURE RELATED] directly involve oil facilities — score relevance 7-10.
+- Armed conflict in oil-producing regions (Iraq, Libya, Nigeria, Yemen, etc.) = supply disruption risk = BULLISH.
+- Strategic developments like ceasefires or peace deals = reduced risk = BEARISH.
+- Weight by fatalities and severity: 0 fatalities = lower relevance, 10+ fatalities = high relevance.
+
+EIA (US Government) petroleum data:
+- This is official, objective government data — highest reliability. Always score relevance 8-10.
+- DRAW in crude oil stocks = supply tightening = BULLISH. BUILD = oversupply = BEARISH.
+- DECLINE in production = supply tightening = BULLISH. INCREASE = more supply = BEARISH.
+- Scale signal_direction by magnitude: small changes (<0.5%) = ±0.3, medium (0.5-2%) = ±0.6, large (>2%) = ±0.9.
 """
 
 

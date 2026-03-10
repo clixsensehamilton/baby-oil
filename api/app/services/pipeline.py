@@ -11,6 +11,8 @@ from app.models.database import SessionLocal
 from app.models.schemas import Event, IndexSnapshot
 from app.scrapers.rss_scraper import scrape_rss_feeds
 from app.scrapers.firms_scraper import scrape_firms
+from app.scrapers.acled_scraper import scrape_acled
+from app.scrapers.eia_scraper import scrape_eia
 from app.services.scorer import score_event
 from app.services.calculator import calculate_index
 
@@ -25,11 +27,20 @@ async def run_pipeline():
     """
     print("[Pipeline] Starting scrape cycle...")
 
-    # Step 1: Scrape from all sources
-    rss_events = await scrape_rss_feeds()
+    # Step 1: Scrape from all sources (primary OSINT first, news supplementary)
+    acled_events = await scrape_acled()
+    eia_events = await scrape_eia()
     firms_events = await scrape_firms()
-    raw_events = rss_events + firms_events
-    print(f"[Pipeline] Scraped {len(rss_events)} RSS + {len(firms_events)} FIRMS = {len(raw_events)} total.")
+    rss_events = await scrape_rss_feeds()
+    raw_events = acled_events + eia_events + firms_events + rss_events
+    print(
+        f"[Pipeline] Scraped: "
+        f"{len(acled_events)} ACLED + "
+        f"{len(eia_events)} EIA + "
+        f"{len(firms_events)} FIRMS + "
+        f"{len(rss_events)} RSS = "
+        f"{len(raw_events)} total."
+    )
 
     if not raw_events:
         print("[Pipeline] No events found. Skipping.")

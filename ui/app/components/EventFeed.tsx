@@ -62,7 +62,7 @@ const NASA_FIRMS_SOURCE = "NASA FIRMS";
 const PAGE_SIZE = 20;
 
 type SortMode = "recent" | "relevance";
-type TabMode = "all" | "firms";
+type TabMode = "all" | "acled" | "eia" | "firms";
 
 export default function EventFeed({ initialEvents, total: initialTotal }: EventFeedProps) {
     const [sortMode, setSortMode] = useState<SortMode>("recent");
@@ -114,8 +114,12 @@ export default function EventFeed({ initialEvents, total: initialTotal }: EventF
     // 1. Filter by Tab
     if (activeTab === "firms") {
         filtered = filtered.filter((e) => e.source.includes(NASA_FIRMS_SOURCE));
+    } else if (activeTab === "acled") {
+        filtered = filtered.filter((e) => e.source.includes("ACLED"));
+    } else if (activeTab === "eia") {
+        filtered = filtered.filter((e) => e.source.includes("EIA"));
     } else {
-        // "All" tab: exclude NASA FIRMS so news is readable
+        // "All" tab: show everything except NASA FIRMS (satellite noise)
         filtered = filtered.filter((e) => !e.source.includes(NASA_FIRMS_SOURCE));
     }
 
@@ -150,25 +154,24 @@ export default function EventFeed({ initialEvents, total: initialTotal }: EventF
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-[var(--border-color)] mb-5">
-                <button
-                    onClick={() => setActiveTab("all")}
-                    className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === "all"
-                            ? "border-b-2 border-emerald-500 text-[var(--text-primary)]"
-                            : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                        }`}
-                >
-                    All Intelligence
-                </button>
-                <button
-                    onClick={() => setActiveTab("firms")}
-                    className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "firms"
-                            ? "border-b-2 border-emerald-500 text-[var(--text-primary)]"
-                            : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                        }`}
-                >
-                    <span className="text-orange-500">🛰️</span> NASA FIRMS
-                </button>
+            <div className="flex border-b border-[var(--border-color)] mb-5 overflow-x-auto">
+                {([
+                    { key: "all" as TabMode, label: "All Intel" },
+                    { key: "acled" as TabMode, label: "Conflict (ACLED)" },
+                    { key: "eia" as TabMode, label: "EIA Data" },
+                    { key: "firms" as TabMode, label: "Satellite (FIRMS)" },
+                ]).map((tab) => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTab === tab.key
+                                ? "border-b-2 border-emerald-500 text-[var(--text-primary)]"
+                                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                            }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
             {/* Controls */}
@@ -334,9 +337,9 @@ export default function EventFeed({ initialEvents, total: initialTotal }: EventF
                                 <span
                                     className="text-xs"
                                     style={{ color: "var(--text-muted)" }}
-                                    title={formatManila(event.created_at)}
+                                    title={formatManila(event.event_time || event.created_at)}
                                 >
-                                    {formatTimeAgo(event.created_at)} · {formatManila(event.created_at)}
+                                    {formatTimeAgo(event.event_time || event.created_at)} · {formatManila(event.event_time || event.created_at)}
                                 </span>
                                 {event.source_url && (
                                     <a
