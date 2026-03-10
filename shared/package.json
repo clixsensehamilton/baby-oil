@@ -1,0 +1,6 @@
+{
+  "name": "oil-intel-shared",
+  "version": "1.0.0",
+  "description": "Shared types and constants for the Oil Intelligence Index",
+  "private": true
+}
