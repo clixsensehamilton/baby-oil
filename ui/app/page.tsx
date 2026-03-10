@@ -86,7 +86,7 @@ export default async function Home() {
   try {
     const [realIndex, realEvents] = await Promise.all([
       fetchIndex(),
-      fetchEvents(20, 0, 1),
+      fetchEvents(20, 0, 1, "recent", 30),
     ]);
     indexData = realIndex;
     eventsData = realEvents;
@@ -125,7 +125,7 @@ export default async function Home() {
 
         {/* Feed */}
         <EventFeed
-          events={eventsData.events}
+          initialEvents={eventsData.events}
           total={eventsData.total}
         />
       </div>

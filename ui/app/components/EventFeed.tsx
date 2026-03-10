@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import type { IntelEvent } from "../lib/api";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { fetchEvents, type IntelEvent } from "../lib/api";
 
 interface EventFeedProps {
-    events: IntelEvent[];
+    initialEvents: IntelEvent[];
     total: number;
 }
 
@@ -58,20 +58,65 @@ function formatManila(isoString: string): string {
     });
 }
 
+const NASA_FIRMS_SOURCE = "NASA FIRMS";
+const PAGE_SIZE = 20;
+
 type SortMode = "recent" | "relevance";
 type TabMode = "all" | "firms";
 
-export default function EventFeed({ events, total }: EventFeedProps) {
+export default function EventFeed({ initialEvents, total: initialTotal }: EventFeedProps) {
     const [sortMode, setSortMode] = useState<SortMode>("recent");
     const [highImpactOnly, setHighImpactOnly] = useState(false);
     const [activeTab, setActiveTab] = useState<TabMode>("all");
 
-    // Client-side filtering & sorting (supplements the server-side defaults)
-    let filtered = events;
+    // Lazy-load state
+    const [allEvents, setAllEvents] = useState<IntelEvent[]>(initialEvents);
+    const [total, setTotal] = useState(initialTotal);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    const hasMore = allEvents.length < total;
+
+    const loadMore = useCallback(async () => {
+        if (loadingMore || !hasMore) return;
+        setLoadingMore(true);
+        try {
+            const res = await fetchEvents(PAGE_SIZE, allEvents.length, 1, "recent", 30);
+            setAllEvents((prev) => {
+                const existingIds = new Set(prev.map((e) => e.id));
+                const newEvents = res.events.filter((e) => !existingIds.has(e.id));
+                return [...prev, ...newEvents];
+            });
+            setTotal(res.total);
+        } catch {
+            // silently fail — user can scroll again
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [loadingMore, hasMore, allEvents.length]);
+
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) loadMore();
+            },
+            { threshold: 0.1 }
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [loadMore]);
+
+    // Client-side filtering & sorting
+    let filtered = allEvents;
 
     // 1. Filter by Tab
     if (activeTab === "firms") {
-        filtered = filtered.filter((e) => e.source.includes("NASA FIRMS"));
+        filtered = filtered.filter((e) => e.source.includes(NASA_FIRMS_SOURCE));
+    } else {
+        // "All" tab: exclude NASA FIRMS so news is readable
+        filtered = filtered.filter((e) => !e.source.includes(NASA_FIRMS_SOURCE));
     }
 
     // 2. Filter by Impact
@@ -212,6 +257,7 @@ export default function EventFeed({ events, total }: EventFeedProps) {
             ) : (
                 <div className="space-y-3">
                     {filtered.map((event, idx) => (
+
                         <div
                             key={event.id}
                             className="feed-item p-4 rounded-xl transition-colors duration-200"
@@ -306,6 +352,20 @@ export default function EventFeed({ events, total }: EventFeedProps) {
                             </div>
                         </div>
                     ))}
+
+                    {/* Lazy load sentinel */}
+                    <div ref={sentinelRef} className="py-2 text-center">
+                        {loadingMore && (
+                            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                Loading more…
+                            </span>
+                        )}
+                        {!hasMore && allEvents.length > PAGE_SIZE && (
+                            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                — end of feed —
+                            </span>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
