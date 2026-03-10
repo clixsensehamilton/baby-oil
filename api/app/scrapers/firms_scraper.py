@@ -68,14 +68,24 @@ async def scrape_firms(days: int = 1) -> list[dict]:
     return all_events
 
 
+# Cluster resolution in degrees (~50 km grid)
+CLUSTER_GRID_DEG = 0.5
+# Max clusters to emit per region (highest FRP wins)
+MAX_CLUSTERS_PER_REGION = 3
+# Minimum FRP threshold (MW) — raise to skip minor flaring
+MIN_FRP_MW = 50
+
+
 async def _fetch_region(
     client: httpx.AsyncClient,
     map_key: str,
     region: dict,
     days: int,
 ) -> list[dict]:
-    """Fetch FIRMS data for a single region and filter for significant events."""
-    # Use VIIRS sensor (higher resolution than MODIS)
+    """
+    Fetch FIRMS data for a single region, cluster nearby hotspots into
+    single events, and return the top MAX_CLUSTERS_PER_REGION by total FRP.
+    """
     url = f"{FIRMS_API_URL}/{map_key}/VIIRS_SNPP_NRT/{region['bbox']}/{days}"
 
     response = await client.get(url)
@@ -86,7 +96,9 @@ async def _fetch_region(
         return []
 
     header = lines[0].split(",")
-    events = []
+
+    # clusters: grid_key -> {total_frp, count, peak_frp, lat, lon, event_time, acq_date}
+    clusters: dict[str, dict] = {}
 
     for line in lines[1:]:
         cols = line.split(",")
@@ -95,41 +107,76 @@ async def _fetch_region(
 
         row = dict(zip(header, cols))
 
-        # Filter: only high-confidence detections (≥ "nominal" or "high")
         confidence = row.get("confidence", "low")
         if confidence == "low":
             continue
 
-        # Filter: only bright fires (FRP > 10 MW = significant)
-        frp = float(row.get("frp", 0))
-        if frp < 10:
+        try:
+            frp = float(row.get("frp", 0))
+            lat = float(row.get("latitude", 0))
+            lon = float(row.get("longitude", 0))
+        except ValueError:
             continue
 
-        lat = row.get("latitude", "?")
-        lon = row.get("longitude", "?")
+        if frp < MIN_FRP_MW:
+            continue
+
+        # Snap to grid cell
+        grid_lat = round(round(lat / CLUSTER_GRID_DEG) * CLUSTER_GRID_DEG, 1)
+        grid_lon = round(round(lon / CLUSTER_GRID_DEG) * CLUSTER_GRID_DEG, 1)
+        grid_key = f"{grid_lat},{grid_lon}"
+
         acq_date = row.get("acq_date", "")
         acq_time = row.get("acq_time", "")
-
         event_time = None
         try:
-            event_time = datetime.strptime(
-                f"{acq_date} {acq_time}", "%Y-%m-%d %H%M"
-            )
+            event_time = datetime.strptime(f"{acq_date} {acq_time}", "%Y-%m-%d %H%M")
         except ValueError:
             pass
 
+        if grid_key not in clusters:
+            clusters[grid_key] = {
+                "total_frp": 0.0,
+                "peak_frp": 0.0,
+                "count": 0,
+                "lat": grid_lat,
+                "lon": grid_lon,
+                "event_time": event_time,
+                "acq_date": acq_date,
+            }
+
+        c = clusters[grid_key]
+        c["total_frp"] += frp
+        c["count"] += 1
+        if frp > c["peak_frp"]:
+            c["peak_frp"] = frp
+            c["event_time"] = event_time
+
+    if not clusters:
+        return []
+
+    # Sort by total FRP descending, take top N
+    top = sorted(clusters.values(), key=lambda c: c["total_frp"], reverse=True)[:MAX_CLUSTERS_PER_REGION]
+
+    events = []
+    for c in top:
+        lat, lon = c["lat"], c["lon"]
+        date_str = c["acq_date"]
         events.append({
-            "headline": f"Thermal anomaly detected in {region['name']} — {frp:.0f} MW at ({lat}, {lon})",
+            "headline": (
+                f"Thermal cluster in {region['name']} ({lat}°, {lon}°) — "
+                f"{date_str}, {c['total_frp']:.0f} MW total ({c['count']} detections)"
+            ),
             "source": "NASA FIRMS (Satellite)",
             "source_url": f"https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:fires;@{lon},{lat},10z",
             "raw_content": (
                 f"Region: {region['name']}. "
-                f"Fire Radiative Power: {frp} MW. "
-                f"Confidence: {confidence}. "
-                f"Coordinates: {lat}, {lon}. "
-                f"Date: {acq_date} {acq_time}."
+                f"Cluster center: {lat}°N, {lon}°E. "
+                f"Total Fire Radiative Power: {c['total_frp']:.0f} MW across {c['count']} detections. "
+                f"Peak FRP: {c['peak_frp']:.0f} MW. "
+                f"Date: {date_str}."
             ),
-            "event_time": event_time,
+            "event_time": c["event_time"],
         })
 
     return events
