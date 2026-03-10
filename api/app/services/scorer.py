@@ -40,6 +40,12 @@ Examples of LOW relevance (1-3):
 - Politician speeches with no concrete action
 - General economic news not directly about oil
 - Weather events in non-oil regions
+
+NASA FIRMS satellite thermal anomaly events:
+- These are pre-filtered high-confidence hotspots detected near known oil infrastructure regions (Persian Gulf, Libya, Nigeria, Gulf of Mexico, Russia/Caspian).
+- A thermal anomaly near oil infrastructure (refinery, pipeline, storage) = potential fire or incident = supply disruption risk = BULLISH signal.
+- Score relevance based on Fire Radiative Power (FRP): 10-50 MW = moderate (4-6), 50-200 MW = significant (6-8), 200+ MW = major (8-10).
+- Default to bullish unless the context clearly indicates routine gas flaring (steady low-intensity, no incident indicators).
 """
 
 
