@@ -13,8 +13,8 @@ from datetime import datetime
 # Curated list of high-signal RSS feeds
 DEFAULT_FEEDS = [
     {
-        "name": "Reuters Energy",
-        "url": "https://reutersagency.com/feed/?best-topics=energy&post_type=best",
+        "name": "Offshore Technology",
+        "url": "https://www.offshore-technology.com/feed/",
     },
     {
         "name": "OilPrice.com",
