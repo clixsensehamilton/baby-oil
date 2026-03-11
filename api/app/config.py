@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     )
 
     # --- ACLED (Conflict Data) ---
-    ACLED_API_KEY: str = Field(default="", description="ACLED API key")
     ACLED_EMAIL: str = Field(default="", description="Email registered with ACLED")
+    ACLED_PASSWORD: str = Field(default="", description="ACLED account password")
 
     # --- EIA (US Gov Petroleum Data) ---
     EIA_API_KEY: str = Field(default="", description="EIA API key")

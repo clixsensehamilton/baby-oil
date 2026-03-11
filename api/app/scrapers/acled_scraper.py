@@ -7,7 +7,8 @@ Fetches structured conflict events from ACLED (Armed Conflict Location
 Pre-news intelligence: ACLED reports events (explosions, battles, violence)
 with precise geolocation, often before mainstream media covers them.
 
-Requires a free API key from: https://developer.acleddata.com/
+Requires a free account at: https://acleddata.com/
+Auth: OAuth 2.0 password grant (email + password).
 """
 
 import httpx
@@ -15,7 +16,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 
-ACLED_API_URL = "https://api.acleddata.com/acled/read"
+ACLED_TOKEN_URL = "https://acleddata.com/oauth/token"
+ACLED_API_URL = "https://acleddata.com/api/acled/read"
 
 # Oil-relevant event types (we skip protests/riots — low supply impact)
 OIL_EVENT_TYPES = [
@@ -25,7 +27,7 @@ OIL_EVENT_TYPES = [
     "Strategic developments",
 ]
 
-# Oil-producing regions: country + admin1 regions near infrastructure
+# Oil-producing countries to monitor
 OIL_COUNTRIES = [
     "Iraq",
     "Iran",
@@ -49,58 +51,72 @@ OIL_KEYWORDS = [
 ]
 
 
+async def _get_access_token(client: httpx.AsyncClient) -> str | None:
+    """Obtain an OAuth 2.0 access token from ACLED."""
+    response = await client.post(
+        ACLED_TOKEN_URL,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        data={
+            "username": settings.ACLED_EMAIL,
+            "password": settings.ACLED_PASSWORD,
+            "grant_type": "password",
+            "client_id": "acled",
+        },
+    )
+    response.raise_for_status()
+    return response.json().get("access_token")
+
+
 async def scrape_acled(days: int = 3) -> list[dict]:
     """
     Fetch recent conflict events from ACLED in oil-producing countries.
     Returns structured events filtered for supply-relevant incidents.
     """
-    api_key = settings.ACLED_API_KEY
-    email = settings.ACLED_EMAIL
-    if not api_key or not email:
-        print("[ACLED] No ACLED_API_KEY or ACLED_EMAIL configured — skipping.")
+    if not settings.ACLED_EMAIL or not settings.ACLED_PASSWORD:
+        print("[ACLED] No ACLED_EMAIL or ACLED_PASSWORD configured — skipping.")
         return []
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    countries_param = "|".join(OIL_COUNTRIES)
     all_events = []
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        for country in OIL_COUNTRIES:
-            try:
-                events = await _fetch_country(client, api_key, email, country, cutoff)
-                all_events.extend(events)
-            except Exception as e:
-                print(f"[ACLED] Error fetching {country}: {e}")
+        # Step 1: Get OAuth token
+        try:
+            token = await _get_access_token(client)
+            if not token:
+                print("[ACLED] Failed to obtain access token.")
+                return []
+        except Exception as e:
+            print(f"[ACLED] Auth error: {e}")
+            return []
 
-    print(f"[ACLED] Found {len(all_events)} conflict events in oil regions.")
-    return all_events
+        headers = {"Authorization": f"Bearer {token}"}
 
+        # Step 2: Fetch events for all oil countries in one request
+        try:
+            params = {
+                "_format": "json",
+                "country": countries_param,
+                "event_date": cutoff,
+                "event_date_where": ">=",
+                "limit": 200,
+                "fields": "event_id_cnty|event_date|event_type|sub_event_type|actor1|actor2|country|admin1|location|latitude|longitude|fatalities|notes",
+            }
 
-async def _fetch_country(
-    client: httpx.AsyncClient,
-    api_key: str,
-    email: str,
-    country: str,
-    cutoff_date: str,
-) -> list[dict]:
-    """Fetch ACLED events for a single country since cutoff_date."""
-    params = {
-        "key": api_key,
-        "email": email,
-        "country": country,
-        "event_date": cutoff_date,
-        "event_date_where": ">=",
-        "limit": 50,
-    }
+            response = await client.get(ACLED_API_URL, params=params, headers=headers)
+            response.raise_for_status()
+            data = response.json()
 
-    response = await client.get(ACLED_API_URL, params=params)
-    response.raise_for_status()
-    data = response.json()
+            rows = data.get("data", data) if isinstance(data, dict) else data
+            if isinstance(rows, dict):
+                rows = rows.get("data", [])
 
-    if not data.get("success") or not data.get("data"):
-        return []
+        except Exception as e:
+            print(f"[ACLED] Fetch error: {e}")
+            return []
 
-    events = []
-    for row in data["data"]:
+    for row in rows:
         event_type = row.get("event_type", "")
         if event_type not in OIL_EVENT_TYPES:
             continue
@@ -110,6 +126,7 @@ async def _fetch_country(
         sub_type = row.get("sub_event_type", "")
         location = row.get("location", "")
         admin1 = row.get("admin1", "")
+        country = row.get("country", "")
         actor1 = row.get("actor1", "")
         actor2 = row.get("actor2", "")
 
@@ -141,7 +158,7 @@ async def _fetch_country(
         if has_oil_keyword:
             raw_content += " [OIL INFRASTRUCTURE RELATED]"
 
-        events.append({
+        all_events.append({
             "headline": headline,
             "source": "ACLED Conflict Data",
             "source_url": None,
@@ -149,4 +166,5 @@ async def _fetch_country(
             "event_time": event_time,
         })
 
-    return events
+    print(f"[ACLED] Found {len(all_events)} conflict events in oil regions.")
+    return all_events
