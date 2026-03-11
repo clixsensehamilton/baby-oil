@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
     # Schedule the scrape pipeline (next_run_time=now as belt-and-suspenders)
     scheduler.add_job(
-        lambda: asyncio.ensure_future(run_pipeline()),
+        run_pipeline,
         "interval",
         minutes=settings.SCRAPE_INTERVAL_MINUTES,
         id="scrape_pipeline",
