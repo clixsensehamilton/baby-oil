@@ -7,6 +7,7 @@ and the computed Buy/Sell index to the frontend dashboard.
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,13 +31,22 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("[Startup] Database tables ensured.")
 
-    # Schedule the scrape pipeline
+    # Run pipeline immediately on startup so data is available right away
+    # (critical for Render Free tier which spins down after inactivity)
+    try:
+        await run_pipeline()
+        print("[Startup] Initial pipeline run complete.")
+    except Exception as e:
+        print(f"[Startup] Initial pipeline error (non-fatal): {e}")
+
+    # Schedule the scrape pipeline (next_run_time=now as belt-and-suspenders)
     scheduler.add_job(
         lambda: asyncio.ensure_future(run_pipeline()),
         "interval",
         minutes=settings.SCRAPE_INTERVAL_MINUTES,
         id="scrape_pipeline",
         replace_existing=True,
+        next_run_time=datetime.now(),
     )
     scheduler.start()
     print(f"[Startup] Scheduler started — pipeline runs every {settings.SCRAPE_INTERVAL_MINUTES} min.")
